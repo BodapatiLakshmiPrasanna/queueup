@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Now serving</title><link rel="stylesheet" href="/style.css"></head>
+<body><div class="display" aria-live="polite">
+  <p class="muted">Now serving</p>
+  <div class="big" id="n">-</div>
+  <p class="muted" id="w"></p>
+</div>
+<script>
+async function tick(){
+  try{const q=await (await fetch('/api/queue')).json();
+    document.getElementById('n').textContent=q.nowServing??'-';
+    document.getElementById('w').textContent=q.waiting+' waiting today';}catch{}
+}
+tick(); setInterval(tick,5000);
+</script></body></html>

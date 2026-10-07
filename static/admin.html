@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Owner dashboard</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="wide">
+<h1>Owner dashboard</h1>
+<section class="card" id="login">
+  <form id="lf"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required>
+  <button class="primary">Log in</button><p class="err" id="lerr" role="alert"></p></form>
+</section>
+<div id="app" hidden>
+  <section class="card">
+    <div class="row">
+      <div><label for="day">Day</label><input type="date" id="day"></div>
+      <button class="primary" id="next">Call next customer</button>
+      <button id="out">Log out</button>
+    </div>
+    <p class="err" id="err" role="alert"></p>
+    <div class="table-wrap"><table><thead><tr><th>Time</th><th>No.</th><th>Name</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <p class="muted" id="empty" hidden>No bookings for this day.</p>
+  </section>
+  <section class="card"><h2 style="margin-top:0">Last 7 days</h2><div id="perday"></div>
+    <h2>Busiest hours</h2><div id="hours"></div><p class="muted" id="totals"></p></section>
+  <p class="muted"><a href="/display.html">Open the live queue screen</a></p>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+let tok=sessionStorage.getItem('tok'); $('day').value=fmt(new Date());
+async function api(path,opt={}){
+  const r=await fetch(path,{...opt,headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok}});
+  if(r.status===401){logout();throw new Error('Session expired.');}
+  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error'); return d;
+}
+function logout(){sessionStorage.removeItem('tok');tok=null;$('app').hidden=true;$('login').hidden=false;}
+$('out').onclick=logout;
+$('lf').onsubmit=async e=>{e.preventDefault();
+  const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('pw').value})});
+  const d=await r.json(); if(!r.ok){$('lerr').textContent=d.detail;return;}
+  tok=d.token;sessionStorage.setItem('tok',tok);$('pw').value='';start();};
+function bar(box,items,label,max){box.textContent='';items.forEach(i=>{
+  const row=document.createElement('div');row.className='stat';
+  const a=document.createElement('span');a.textContent=label(i);
+  const b=document.createElement('div');b.className='bar';b.style.width=(i.count/max*100)+'%';
+  const c=document.createElement('span');c.textContent=i.count;row.append(a,b,c);box.appendChild(row);});}
+async function refresh(){
+  try{
+    $('err').textContent='';
+    const list=await api('/api/admin/appointments?date='+$('day').value), body=$('rows'); body.textContent='';
+    $('empty').hidden=list.length>0;
+    list.forEach(a=>{
+      const tr=document.createElement('tr');
+      [a.time,a.token,a.name,a.phone].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+      const st=document.createElement('td');const p=document.createElement('span');p.className='pill '+a.status;p.textContent=a.status.replace('_',' ');st.appendChild(p);tr.appendChild(st);
+      const ac=document.createElement('td');
+      [['Confirm','confirmed',['booked']],['No-show','no_show',['booked','confirmed']],['Cancel','cancelled',['booked','confirmed']]].forEach(([t,s,from])=>{
+        if(!from.includes(a.status))return;const b=document.createElement('button');b.textContent=t;
+        b.onclick=async()=>{try{await api('/api/admin/appointments/'+a.id,{method:'PATCH',body:JSON.stringify({status:s})});refresh();}catch(e){$('err').textContent=e.message;}};ac.appendChild(b);});
+      tr.appendChild(ac);body.appendChild(tr);});
+    const s=await api('/api/admin/stats');
+    bar($('perday'),s.perDay,i=>i.date,Math.max(1,...s.perDay.map(i=>i.count)));
+    bar($('hours'),s.busiestHours,i=>i.hour,Math.max(1,...s.busiestHours.map(i=>i.count)));
+    $('totals').textContent=s.totals.total+' bookings in total, '+s.totals.noShows+' no-shows, '+s.totals.cancelled+' cancelled.';
+  }catch(e){$('err').textContent=e.message;}
+}
+$('day').onchange=refresh;
+$('next').onclick=async()=>{try{const r=await api('/api/admin/queue/next',{method:'POST'});
+  if(!r.serving)$('err').textContent='No one is waiting.';refresh();}catch(e){$('err').textContent=e.message;}};
+function start(){$('login').hidden=true;$('app').hidden=false;refresh();}
+if(tok)start(); setInterval(()=>{if(tok)refresh();},15000);
+</script></body></html>

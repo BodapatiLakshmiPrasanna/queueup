@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book an appointment</title><link rel="stylesheet" href="/style.css"></head>
+<body><main>
+<h1>Book an appointment</h1>
+<p class="muted">Pick a day and time. No account needed.</p>
+<section class="card" id="pick">
+  <label for="date">Date</label><input type="date" id="date">
+  <div class="slots" id="slots" aria-label="Available times"></div>
+  <form id="form" hidden>
+    <label for="name">Your name</label><input id="name" autocomplete="name" required minlength="2">
+    <label for="phone">Phone number</label><input id="phone" type="tel" autocomplete="tel" required placeholder="9876543210">
+    <button class="primary" type="submit">Book this time</button>
+  </form>
+  <p class="err" id="err" role="alert"></p>
+</section>
+<section class="card" id="done" hidden>
+  <p class="muted">Your queue number</p><div class="token" id="tok"></div>
+  <p id="summary"></p>
+  <button id="cancel">Cancel booking</button>
+  <p class="err" id="cerr" role="alert"></p>
+</section>
+<p class="muted"><a href="/display.html">Live queue</a></p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+const d=$('date'); d.min=d.value=fmt(new Date()); let chosen=null, booking=null;
+async function loadSlots(){
+  chosen=null; $('form').hidden=true; $('err').textContent='';
+  const r=await fetch('/api/slots?date='+d.value), data=await r.json(), box=$('slots'); box.textContent='';
+  if(!r.ok){$('err').textContent=data.detail;return;}
+  data.forEach(s=>{const b=document.createElement('button');b.type='button';b.textContent=s.time;b.disabled=!s.available;
+    b.onclick=()=>{chosen=s.time;[...box.children].forEach(c=>c.classList.remove('sel'));b.classList.add('sel');$('form').hidden=false;};box.appendChild(b);});
+}
+d.onchange=loadSlots; loadSlots();
+$('form').onsubmit=async e=>{
+  e.preventDefault();
+  const r=await fetch('/api/appointments',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:$('name').value,phone:$('phone').value,date:d.value,time:chosen})});
+  const data=await r.json();
+  if(!r.ok){$('err').textContent=data.detail;loadSlots();return;}
+  booking={id:data.id,phone:$('phone').value};
+  $('pick').hidden=true;$('done').hidden=false;$('tok').textContent=data.token;
+  $('summary').textContent='Booked for '+data.date+' at '+data.time+'. Show this number when you arrive.';
+};
+$('cancel').onclick=async()=>{
+  const r=await fetch('/api/appointments/'+booking.id+'/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:booking.phone})});
+  if(r.ok){$('done').hidden=true;$('pick').hidden=false;loadSlots();}else{$('cerr').textContent=(await r.json()).detail;}
+};
+</script></body></html>
