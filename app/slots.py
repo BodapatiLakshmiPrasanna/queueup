@@ -26,3 +26,5 @@ def is_valid_date(s) -> bool:
         return date.fromisoformat(s).isoformat() == s
     except (ValueError, TypeError):
         return False
+# Not necessary
+  
